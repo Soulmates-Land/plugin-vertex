@@ -41,10 +41,25 @@ export async function handleTextEmbedding(
 
   logger.debug(`[Vertex] Embedding using ${modelName}`);
 
+  const dimensionSetting = runtime.getSetting("VERTEX_EMBEDDING_DIMENSIONS");
+  const outputDimensionality =
+    typeof dimensionSetting === "number"
+      ? dimensionSetting
+      : typeof dimensionSetting === "string"
+        ? parseInt(dimensionSetting, 10)
+        : undefined;
+
   const { embedding } = await executeWithRetry("embedding request", () =>
     embed({
       model: vertex.textEmbeddingModel(modelName),
       value: text,
+      ...(outputDimensionality
+        ? {
+            providerOptions: {
+              google: { outputDimensionality },
+            },
+          }
+        : {}),
     }),
   );
 
