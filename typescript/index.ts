@@ -5,6 +5,7 @@ import type {
   Plugin,
   TestCase,
   TestSuite,
+  TextEmbeddingParams,
   TextStreamResult,
 } from "@elizaos/core";
 import { logger, ModelType } from "@elizaos/core";
@@ -16,6 +17,7 @@ import {
   handleReasoningLarge,
   handleObjectSmall,
   handleObjectLarge,
+  handleTextEmbedding,
 } from "./models";
 import { getProjectId } from "./utils/config";
 
@@ -144,6 +146,13 @@ export const vertexPlugin: Plugin = {
     ): Promise<Record<string, JsonLike>> => {
       const result = await handleObjectLarge(runtime, params);
       return result as Record<string, JsonLike>;
+    },
+
+    [ModelType.TEXT_EMBEDDING]: async (
+      runtime: IAgentRuntime,
+      params: TextEmbeddingParams | string | null,
+    ): Promise<number[]> => {
+      return handleTextEmbedding(runtime, params);
     },
   },
 

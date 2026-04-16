@@ -5,3 +5,4 @@ export {
   handleReasoningLarge,
 } from "./text";
 export { handleObjectSmall, handleObjectLarge } from "./object";
+export { handleTextEmbedding } from "./embedding";
