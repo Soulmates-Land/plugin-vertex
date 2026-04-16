@@ -4,7 +4,7 @@ Google Vertex AI plugin for ElizaOS — run any models through your GCP account.
 
 ## Why
 
-Use your GCP billing instead of Anthropic API keys or ElizaOS Cloud credits. Same Claude models, routed through Google's Vertex AI infrastructure.
+Use your GCP billing instead of any LLM API keys. Same Claude models, routed through Google's Vertex AI infrastructure.
 
 ## Setup
 
