@@ -1,9 +1,9 @@
 import type { IAgentRuntime } from "@elizaos/core";
 
-const DEFAULT_SMALL_MODEL = "claude-haiku-4-5@20251001";
-const DEFAULT_LARGE_MODEL = "claude-sonnet-4-6@20250514";
-const DEFAULT_REASONING_SMALL_MODEL = "claude-sonnet-4-6@20250514";
-const DEFAULT_REASONING_LARGE_MODEL = "claude-opus-4-6@20250620";
+const DEFAULT_SMALL_MODEL = "claude-haiku-4-5";
+const DEFAULT_LARGE_MODEL = "claude-sonnet-4-6";
+const DEFAULT_REASONING_SMALL_MODEL = "claude-sonnet-4-6";
+const DEFAULT_REASONING_LARGE_MODEL = "claude-opus-4-6";
 
 function getSetting(runtime: IAgentRuntime, key: string): string | undefined {
   const value = runtime.getSetting(key);

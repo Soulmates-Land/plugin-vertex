@@ -3,6 +3,7 @@ import { logger, ModelType } from "@elizaos/core";
 import { generateObject, jsonSchema } from "ai";
 import { createVertexClient } from "../providers";
 import { getSmallModel, getLargeModel } from "../utils/config";
+import { executeWithRetry } from "../utils/retry";
 
 async function generateObjectWithModel(
   runtime: IAgentRuntime,
@@ -14,14 +15,16 @@ async function generateObjectWithModel(
 
   logger.log(`[Vertex] Object generation using ${modelType}: ${modelName}`);
 
-  const { object } = await generateObject({
-    model: vertex(modelName),
-    messages: [{ role: "user" as const, content: params.prompt }],
-    system: runtime.character.system ?? undefined,
-    schema: jsonSchema(params.schema ?? { type: "object" }),
-    temperature: params.temperature ?? 0.7,
-    maxOutputTokens: params.maxTokens ?? 8192,
-  });
+  const { object } = await executeWithRetry(`${modelType} object request`, () =>
+    generateObject({
+      model: vertex(modelName),
+      messages: [{ role: "user" as const, content: params.prompt }],
+      system: runtime.character.system ?? undefined,
+      schema: jsonSchema(params.schema ?? { type: "object" }),
+      temperature: params.temperature ?? 0.7,
+      maxOutputTokens: params.maxTokens ?? 8192,
+    }),
+  );
 
   return object as Record<string, unknown>;
 }

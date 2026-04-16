@@ -6,6 +6,7 @@ import type {
 import { logger, ModelType } from "@elizaos/core";
 import { generateText, streamText } from "ai";
 import { createVertexClient } from "../providers";
+import { executeWithRetry, formatModelError } from "../utils/retry";
 import {
   getSmallModel,
   getLargeModel,
@@ -50,27 +51,33 @@ async function generateTextWithModel(
   };
 
   if (params.stream) {
-    const streamResult = streamText(generateParams);
-    return {
-      textStream: streamResult.textStream,
-      text: Promise.resolve(streamResult.text),
-      usage: Promise.resolve(streamResult.usage).then((usage) => {
-        if (!usage) return undefined;
-        const promptTokens = usage.inputTokens ?? 0;
-        const completionTokens = usage.outputTokens ?? 0;
-        return {
-          promptTokens,
-          completionTokens,
-          totalTokens: usage.totalTokens ?? promptTokens + completionTokens,
-        };
-      }),
-      finishReason: Promise.resolve(streamResult.finishReason) as Promise<
-        string | undefined
-      >,
-    };
+    try {
+      const streamResult = streamText(generateParams);
+      return {
+        textStream: streamResult.textStream,
+        text: Promise.resolve(streamResult.text),
+        usage: Promise.resolve(streamResult.usage).then((usage) => {
+          if (!usage) return undefined;
+          const promptTokens = usage.inputTokens ?? 0;
+          const completionTokens = usage.outputTokens ?? 0;
+          return {
+            promptTokens,
+            completionTokens,
+            totalTokens: usage.totalTokens ?? promptTokens + completionTokens,
+          };
+        }),
+        finishReason: Promise.resolve(streamResult.finishReason) as Promise<
+          string | undefined
+        >,
+      };
+    } catch (error) {
+      throw formatModelError(`${modelType} stream`, error);
+    }
   }
 
-  const { text } = await generateText(generateParams);
+  const { text } = await executeWithRetry(`${modelType} request`, () =>
+    generateText(generateParams),
+  );
   return text;
 }
 

@@ -1,0 +1,7 @@
+{
+  "private": true,
+  "scripts": {
+    "build": "cd typescript && bun run build",
+    "test": "echo 'no tests yet'"
+  }
+}

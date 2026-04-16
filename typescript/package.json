@@ -17,10 +17,10 @@
   },
   "dependencies": {
     "@ai-sdk/google-vertex": "^4.0.0",
-    "@elizaos/core": "2.0.0-alpha.33",
     "ai": "^6.0.23"
   },
   "devDependencies": {
+    "@elizaos/core": "2.0.0-alpha.33",
     "@types/node": "^25.6.0",
     "typescript": "^5.9.0"
   },
@@ -44,25 +44,25 @@
       "VERTEX_SMALL_MODEL": {
         "type": "string",
         "description": "Claude model for TEXT_SMALL",
-        "default": "claude-haiku-4-5@20251001",
+        "default": "claude-haiku-4-5",
         "required": false
       },
       "VERTEX_LARGE_MODEL": {
         "type": "string",
         "description": "Claude model for TEXT_LARGE",
-        "default": "claude-sonnet-4-6@20250514",
+        "default": "claude-sonnet-4-6",
         "required": false
       },
       "VERTEX_REASONING_SMALL_MODEL": {
         "type": "string",
         "description": "Claude model for TEXT_REASONING_SMALL",
-        "default": "claude-sonnet-4-6@20250514",
+        "default": "claude-sonnet-4-6",
         "required": false
       },
       "VERTEX_REASONING_LARGE_MODEL": {
         "type": "string",
         "description": "Claude model for TEXT_REASONING_LARGE",
-        "default": "claude-opus-4-6@20250620",
+        "default": "claude-opus-4-6",
         "required": false
       }
     }
