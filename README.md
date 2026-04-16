@@ -1,6 +1,6 @@
 # @elizaos/plugin-vertex
 
-Google Vertex AI plugin for ElizaOS — run Claude models through your GCP account.
+Google Vertex AI plugin for ElizaOS — run any models through your GCP account.
 
 ## Why
 
