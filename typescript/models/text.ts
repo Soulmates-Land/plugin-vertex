@@ -46,8 +46,6 @@ async function generateTextWithModel(
     temperature,
     maxOutputTokens: maxTokens,
     stopSequences: (params.stopSequences ?? []) as string[],
-    frequencyPenalty: params.frequencyPenalty ?? 0.7,
-    presencePenalty: params.presencePenalty ?? 0.7,
   };
 
   if (params.stream) {
