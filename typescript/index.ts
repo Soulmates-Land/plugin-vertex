@@ -86,7 +86,7 @@ const TEXT_REASONING_LARGE_MODEL_TYPE = (ModelType.TEXT_REASONING_LARGE ??
 export const vertexPlugin: Plugin = {
   name: "vertex",
   description:
-    "Google Vertex AI plugin — Claude models via GCP (text, object, reasoning)",
+    "Google Vertex AI plugin — Claude + Gemini models via GCP (text, object, reasoning, embeddings)",
 
   config: {
     GOOGLE_VERTEX_PROJECT_ID: env.GOOGLE_VERTEX_PROJECT_ID ?? null,

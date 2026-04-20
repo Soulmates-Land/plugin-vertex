@@ -1,7 +1,7 @@
 {
   "name": "@elizaos/plugin-vertex",
-  "version": "0.4.0",
-  "description": "Google Vertex AI plugin for ElizaOS — Claude models via GCP",
+  "version": "0.5.0",
+  "description": "Google Vertex AI plugin for ElizaOS — Claude and Gemini models via GCP",
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -37,36 +37,35 @@
       },
       "GOOGLE_VERTEX_REGION": {
         "type": "string",
-        "description": "Vertex AI region (e.g. us-east5, europe-west1)",
-        "default": "us-east5",
+        "description": "Vertex AI region (e.g. us-east5 for Claude, us-central1 for Gemini). Defaults are provider-aware if unset.",
         "required": false
       },
       "VERTEX_SMALL_MODEL": {
         "type": "string",
-        "description": "Claude model for TEXT_SMALL",
+        "description": "Model for TEXT_SMALL — claude-* or gemini-* (provider auto-detected by prefix)",
         "default": "claude-haiku-4-5",
         "required": false
       },
       "VERTEX_LARGE_MODEL": {
         "type": "string",
-        "description": "Claude model for TEXT_LARGE",
+        "description": "Model for TEXT_LARGE — claude-* or gemini-* (provider auto-detected by prefix)",
         "default": "claude-sonnet-4-6",
         "required": false
       },
       "VERTEX_REASONING_SMALL_MODEL": {
         "type": "string",
-        "description": "Claude model for TEXT_REASONING_SMALL",
+        "description": "Model for TEXT_REASONING_SMALL — claude-* or gemini-* (provider auto-detected by prefix)",
         "default": "claude-sonnet-4-6",
         "required": false
       },
       "VERTEX_REASONING_LARGE_MODEL": {
         "type": "string",
-        "description": "Claude model for TEXT_REASONING_LARGE",
+        "description": "Model for TEXT_REASONING_LARGE — claude-* or gemini-* (provider auto-detected by prefix)",
         "default": "claude-opus-4-6",
         "required": false
       }
     }
   },
   "license": "MIT",
-  "keywords": ["elizaos", "plugin", "vertex-ai", "google-cloud", "claude", "anthropic"]
+  "keywords": ["elizaos", "plugin", "vertex-ai", "google-cloud", "claude", "anthropic", "gemini", "google"]
 }

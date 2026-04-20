@@ -5,7 +5,7 @@ import type {
 } from "@elizaos/core";
 import { logger, ModelType } from "@elizaos/core";
 import { generateText, streamText } from "ai";
-import { createVertexClient } from "../providers";
+import { createModelForName, detectProvider } from "../providers";
 import { executeWithRetry, formatModelError } from "../utils/retry";
 import {
   getSmallModel,
@@ -24,7 +24,8 @@ async function generateTextWithModel(
   modelName: string,
   modelType: string,
 ): Promise<string | TextStreamResult> {
-  const vertex = createVertexClient(runtime);
+  const model = createModelForName(runtime, modelName);
+  const provider = detectProvider(modelName);
 
   let temperature = params.temperature ?? 0.7;
   if (isOpus4Model(modelName) && temperature !== 1) {
@@ -37,10 +38,10 @@ async function generateTextWithModel(
     isOpus4Model(modelName) ? 32_000 : 64_000,
   );
 
-  logger.log(`[Vertex] Using ${modelType}: ${modelName}`);
+  logger.log(`[Vertex:${provider}] Using ${modelType}: ${modelName}`);
 
   const generateParams = {
-    model: vertex(modelName),
+    model,
     messages: [{ role: "user" as const, content: params.prompt }],
     system: runtime.character.system ?? undefined,
     temperature,

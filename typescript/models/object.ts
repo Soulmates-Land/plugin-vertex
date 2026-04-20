@@ -1,7 +1,7 @@
 import type { IAgentRuntime, ObjectGenerationParams } from "@elizaos/core";
 import { logger, ModelType } from "@elizaos/core";
 import { generateObject, jsonSchema } from "ai";
-import { createVertexClient } from "../providers";
+import { createModelForName, detectProvider } from "../providers";
 import { getSmallModel, getLargeModel } from "../utils/config";
 import { executeWithRetry } from "../utils/retry";
 
@@ -11,13 +11,16 @@ async function generateObjectWithModel(
   modelName: string,
   modelType: string,
 ): Promise<Record<string, unknown>> {
-  const vertex = createVertexClient(runtime);
+  const model = createModelForName(runtime, modelName);
+  const provider = detectProvider(modelName);
 
-  logger.log(`[Vertex] Object generation using ${modelType}: ${modelName}`);
+  logger.log(
+    `[Vertex:${provider}] Object generation using ${modelType}: ${modelName}`,
+  );
 
   const { object } = await executeWithRetry(`${modelType} object request`, () =>
     generateObject({
-      model: vertex(modelName),
+      model,
       messages: [{ role: "user" as const, content: params.prompt }],
       system: runtime.character.system ?? undefined,
       schema: jsonSchema(params.schema ?? { type: "object" }),

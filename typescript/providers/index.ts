@@ -1,1 +1,6 @@
-export { createVertexClient } from "./vertex";
+export {
+  createVertexClient,
+  createGoogleClient,
+  createModelForName,
+  detectProvider,
+} from "./vertex";
