@@ -16,9 +16,14 @@ export async function handleTextEmbedding(
   runtime: IAgentRuntime,
   params: TextEmbeddingParams | string | null,
 ): Promise<number[]> {
-  const text = typeof params === "string" ? params : (params?.text ?? "");
-
-  if (!text) return [];
+  // The runtime probes this handler at startup with `null` params to measure
+  // the embedding dimension (`ensureEmbeddingDimension`). Returning an empty
+  // array fails that init step, so we embed a single-space sentinel for
+  // null/empty inputs to surface a valid dimension.
+  const text =
+    typeof params === "string" && params.length > 0
+      ? params
+      : (params && typeof params === "object" && params.text) || " ";
 
   const modelName = getEmbeddingModel(runtime);
   const vertex = createGoogleClient(runtime);
