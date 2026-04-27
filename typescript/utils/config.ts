@@ -46,3 +46,15 @@ export function getReasoningLargeModel(runtime: IAgentRuntime): string {
     DEFAULT_REASONING_LARGE_MODEL
   );
 }
+
+export function getTranscriptionModel(runtime: IAgentRuntime): string {
+  return getSetting(runtime, "VERTEX_TRANSCRIPTION_MODEL") ?? "chirp-2";
+}
+
+export function getTTSModel(runtime: IAgentRuntime): string {
+  return getSetting(runtime, "VERTEX_TTS_MODEL") ?? "en-US-Neural2-F";
+}
+
+export function getRegion(runtime: IAgentRuntime): string {
+  return getSetting(runtime, "GOOGLE_VERTEX_REGION") ?? "us-central1";
+}

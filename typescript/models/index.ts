@@ -6,3 +6,4 @@ export {
 } from "./text";
 export { handleObjectSmall, handleObjectLarge } from "./object";
 export { handleTextEmbedding } from "./embedding";
+export { handleTranscription, handleTextToSpeech } from "./audio";

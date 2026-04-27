@@ -18,6 +18,8 @@ import {
   handleObjectSmall,
   handleObjectLarge,
   handleTextEmbedding,
+  handleTranscription,
+  handleTextToSpeech,
 } from "./models";
 import { getProjectId } from "./utils/config";
 
@@ -153,6 +155,20 @@ export const vertexPlugin: Plugin = {
       params: TextEmbeddingParams | string | null,
     ): Promise<number[]> => {
       return handleTextEmbedding(runtime, params);
+    },
+
+    [ModelType.TRANSCRIPTION]: async (
+      runtime: IAgentRuntime,
+      input: any,
+    ): Promise<string> => {
+      return handleTranscription(runtime, input);
+    },
+
+    [ModelType.TEXT_TO_SPEECH]: async (
+      runtime: IAgentRuntime,
+      input: any,
+    ): Promise<ArrayBuffer> => {
+      return handleTextToSpeech(runtime, input);
     },
   },
 
