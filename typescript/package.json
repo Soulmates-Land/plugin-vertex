@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-vertex",
-  "version": "0.5.0",
+  "version": "0.5.1",
   "description": "Google Vertex AI plugin for ElizaOS — Claude and Gemini models via GCP",
   "type": "module",
   "main": "dist/index.js",
