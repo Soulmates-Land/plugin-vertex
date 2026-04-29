@@ -47,8 +47,13 @@ export function getReasoningLargeModel(runtime: IAgentRuntime): string {
   );
 }
 
+// Default to "latest_long": a v1-API-compatible Speech-to-Text model.
+// Note: chirp_2 is only available via the Speech v2 API; SpeechClient.recognize
+// uses the v1 API, so chirp_2 cannot be used here. Override with
+// VERTEX_TRANSCRIPTION_MODEL if a different v1 model is desired (e.g.
+// "default", "latest_short", "phone_call", "video").
 export function getTranscriptionModel(runtime: IAgentRuntime): string {
-  return getSetting(runtime, "VERTEX_TRANSCRIPTION_MODEL") ?? "chirp-2";
+  return getSetting(runtime, "VERTEX_TRANSCRIPTION_MODEL") ?? "latest_long";
 }
 
 export function getTTSModel(runtime: IAgentRuntime): string {

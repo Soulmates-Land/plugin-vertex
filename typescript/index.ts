@@ -7,6 +7,8 @@ import type {
   TestSuite,
   TextEmbeddingParams,
   TextStreamResult,
+  TranscriptionParams,
+  TextToSpeechParams,
 } from "@elizaos/core";
 import { logger, ModelType } from "@elizaos/core";
 import { initializeVertex, type PluginConfig } from "./init";
@@ -159,14 +161,14 @@ export const vertexPlugin: Plugin = {
 
     [ModelType.TRANSCRIPTION]: async (
       runtime: IAgentRuntime,
-      input: any,
+      input: TranscriptionParams | Buffer | string,
     ): Promise<string> => {
       return handleTranscription(runtime, input);
     },
 
     [ModelType.TEXT_TO_SPEECH]: async (
       runtime: IAgentRuntime,
-      input: any,
+      input: TextToSpeechParams | string,
     ): Promise<ArrayBuffer> => {
       return handleTextToSpeech(runtime, input);
     },

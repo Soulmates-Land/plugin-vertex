@@ -4,164 +4,330 @@ import type {
   TextToSpeechParams as CoreTextToSpeechParams,
 } from "@elizaos/core";
 import { logger } from "@elizaos/core";
-import { SpeechClient } from "@google-cloud/speech";
-import { TextToSpeechClient } from "@google-cloud/text-to-speech";
-import { getProjectId, getRegion, getTranscriptionModel, getTTSModel } from "../utils/config";
+import { SpeechClient, protos as speechProtos } from "@google-cloud/speech";
+import {
+  TextToSpeechClient,
+  protos as ttsProtos,
+} from "@google-cloud/text-to-speech";
+import { getRegion, getTranscriptionModel, getTTSModel } from "../utils/config";
 
-// Types for local parameters
+// Types for local parameters (extra fields not in @elizaos/core's TranscriptionParams).
+// `audio` is intentionally Buffer-only here; callers with Blob/string should pass
+// a string at the top level (URL or base64) instead.
 export interface LocalTranscriptionParams {
-    audio: Buffer | Blob | string;
-    model?: string;
-    languageCode?: string;
-    mimeType?: string;
+  audio: Buffer;
+  languageCode?: string;
+  mimeType?: string;
 }
 
 export interface LocalTextToSpeechParams {
-    text: string;
-    model?: string;
-    voiceName?: string;
-    languageCode?: string;
+  text: string;
+  voiceName?: string;
+  languageCode?: string;
 }
 
-type TranscriptionInput = LocalTranscriptionParams | CoreTranscriptionParams | Buffer | string;
+type TranscriptionInput =
+  | LocalTranscriptionParams
+  | CoreTranscriptionParams
+  | Buffer
+  | string;
 type TTSInput = LocalTextToSpeechParams | CoreTextToSpeechParams | string;
+
+type IRecognizeRequest = speechProtos.google.cloud.speech.v1.IRecognizeRequest;
+type AudioEncoding =
+  speechProtos.google.cloud.speech.v1.RecognitionConfig.AudioEncoding;
+const AudioEncoding =
+  speechProtos.google.cloud.speech.v1.RecognitionConfig.AudioEncoding;
+type ISynthesizeSpeechRequest =
+  ttsProtos.google.cloud.texttospeech.v1.ISynthesizeSpeechRequest;
+const TtsAudioEncoding = ttsProtos.google.cloud.texttospeech.v1.AudioEncoding;
+
+// URL fetch limits
+const URL_FETCH_TIMEOUT_MS = 30_000;
+const URL_FETCH_MAX_BYTES = 25 * 1024 * 1024; // 25 MB
+
+// Module-level client cache, keyed by apiEndpoint (region-specific).
+const speechClientCache = new Map<string, SpeechClient>();
+const ttsClientCache = new Map<string, TextToSpeechClient>();
+
+function getSpeechClient(apiEndpoint: string): SpeechClient {
+  let client = speechClientCache.get(apiEndpoint);
+  if (!client) {
+    client = new SpeechClient({ apiEndpoint });
+    speechClientCache.set(apiEndpoint, client);
+  }
+  return client;
+}
+
+function getTextToSpeechClient(apiEndpoint: string): TextToSpeechClient {
+  let client = ttsClientCache.get(apiEndpoint);
+  if (!client) {
+    client = new TextToSpeechClient({ apiEndpoint });
+    ttsClientCache.set(apiEndpoint, client);
+  }
+  return client;
+}
+
+interface EncodingChoice {
+  encoding: AudioEncoding;
+  sampleRateHertz?: number;
+}
+
+/**
+ * Maps a MIME type to a Google Cloud Speech AudioEncoding.
+ * Throws on unsupported types so we never silently mis-decode audio.
+ */
+function encodingFromMimeType(mimeType: string | undefined): EncodingChoice {
+  // Default: OGG_OPUS at 16 kHz (WhatsApp voice notes).
+  if (!mimeType) {
+    return { encoding: AudioEncoding.OGG_OPUS, sampleRateHertz: 16000 };
+  }
+  const m = mimeType.toLowerCase().split(";")[0]!.trim();
+  switch (m) {
+    case "audio/ogg":
+    case "audio/opus":
+    case "audio/ogg-opus":
+      return { encoding: AudioEncoding.OGG_OPUS, sampleRateHertz: 16000 };
+    case "audio/webm":
+      return { encoding: AudioEncoding.WEBM_OPUS, sampleRateHertz: 48000 };
+    case "audio/wav":
+    case "audio/wave":
+    case "audio/x-wav":
+      // LINEAR16 sample rate is read from the WAV header by the API.
+      return { encoding: AudioEncoding.LINEAR16 };
+    case "audio/flac":
+    case "audio/x-flac":
+      return { encoding: AudioEncoding.FLAC };
+    case "audio/mp3":
+    case "audio/mpeg":
+      return { encoding: AudioEncoding.MP3 };
+    case "audio/amr":
+      return { encoding: AudioEncoding.AMR, sampleRateHertz: 8000 };
+    case "audio/amr-wb":
+      return { encoding: AudioEncoding.AMR_WB, sampleRateHertz: 16000 };
+    default:
+      throw new Error(
+        `Unsupported audio mimeType "${mimeType}". Supported: audio/ogg, audio/webm, audio/wav, audio/flac, audio/mp3, audio/amr, audio/amr-wb.`,
+      );
+  }
+}
+
+/**
+ * Fetches an audio URL with a hard timeout, response.ok check, and a size cap.
+ * Restricted to https:// to mitigate SSRF — internal endpoints (169.254.169.254,
+ * localhost, link-local) are commonly served over http://.
+ */
+async function fetchAudioUrl(url: string): Promise<Buffer> {
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    throw new Error(`Invalid audio URL: ${url}`);
+  }
+  if (parsed.protocol !== "https:") {
+    throw new Error(
+      `Refusing to fetch audio from non-https URL (got ${parsed.protocol}).`,
+    );
+  }
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), URL_FETCH_TIMEOUT_MS);
+  try {
+    const response = await fetch(url, { signal: controller.signal });
+    if (!response.ok) {
+      throw new Error(
+        `Failed to fetch audio: ${response.status} ${response.statusText}`,
+      );
+    }
+    const contentLength = response.headers.get("content-length");
+    if (contentLength) {
+      const declared = Number.parseInt(contentLength, 10);
+      if (Number.isFinite(declared) && declared > URL_FETCH_MAX_BYTES) {
+        throw new Error(
+          `Audio file too large: ${declared} bytes exceeds ${URL_FETCH_MAX_BYTES} byte limit.`,
+        );
+      }
+    }
+    if (!response.body) {
+      const ab = await response.arrayBuffer();
+      if (ab.byteLength > URL_FETCH_MAX_BYTES) {
+        throw new Error(
+          `Audio file too large: ${ab.byteLength} bytes exceeds ${URL_FETCH_MAX_BYTES} byte limit.`,
+        );
+      }
+      return Buffer.from(ab);
+    }
+    const reader = response.body.getReader();
+    const chunks: Uint8Array[] = [];
+    let total = 0;
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      if (value) {
+        total += value.byteLength;
+        if (total > URL_FETCH_MAX_BYTES) {
+          await reader.cancel();
+          throw new Error(
+            `Audio file too large: exceeded ${URL_FETCH_MAX_BYTES} byte limit while streaming.`,
+          );
+        }
+        chunks.push(value);
+      }
+    }
+    return Buffer.concat(
+      chunks.map((c) => Buffer.from(c)),
+      total,
+    );
+  } finally {
+    clearTimeout(timeout);
+  }
+}
 
 /**
  * Handles audio transcription using Google Cloud Speech-to-Text.
- * Supports Buffer, URL string, or parameter objects.
- * 
+ * Supports Buffer, URL string, base64 string, or parameter objects.
+ *
  * @param runtime - The agent runtime for accessing settings and providers.
- * @param input - The audio input to transcribe (Buffer, URL, or TranscriptionParams).
+ * @param input - The audio input to transcribe (Buffer, URL/base64 string, or TranscriptionParams).
  * @returns The transcribed text.
- * @throws Error if the GCP project ID is not set or if transcription fails.
  */
 export async function handleTranscription(
   runtime: IAgentRuntime,
-  input: TranscriptionInput
+  input: TranscriptionInput,
 ): Promise<string> {
-  const projectId = getProjectId(runtime);
-  if (!projectId) throw new Error("GOOGLE_VERTEX_PROJECT_ID not set");
-
   const region = getRegion(runtime);
-  const client = new SpeechClient({
-    apiEndpoint: `${region}-speech.googleapis.com`,
-  });
+  const apiEndpoint = `${region}-speech.googleapis.com`;
+  const client = getSpeechClient(apiEndpoint);
+
   let audioContent: Buffer;
-  let model = getTranscriptionModel(runtime);
+  const model = getTranscriptionModel(runtime);
   let languageCode = "en-US";
-  let encoding: any = "OGG_OPUS"; // Default for WhatsApp
-  let sampleRateHertz = 16000;
+  let mimeType: string | undefined;
 
   if (Buffer.isBuffer(input)) {
     audioContent = input;
   } else if (typeof input === "string") {
-    // Assume it's a URL or base64? For simplicity, we'll try to fetch if it looks like a URL
-    if (input.startsWith("http")) {
-        const response = await fetch(input);
-        const arrayBuffer = await response.arrayBuffer();
-        audioContent = Buffer.from(arrayBuffer);
+    // String inputs: HTTP(S) URL is fetched, otherwise treated as base64.
+    if (/^https?:\/\//i.test(input)) {
+      audioContent = await fetchAudioUrl(input);
     } else {
-        // Assume base64
-        audioContent = Buffer.from(input, "base64");
+      audioContent = Buffer.from(input, "base64");
     }
   } else if ("audio" in input && Buffer.isBuffer(input.audio)) {
     audioContent = input.audio;
-    model = (input as LocalTranscriptionParams).model ?? model;
-    languageCode = (input as LocalTranscriptionParams).languageCode ?? languageCode;
-  } else if ("audioUrl" in input && typeof (input as any).audioUrl === "string") {
-    const response = await fetch((input as any).audioUrl);
-    const arrayBuffer = await response.arrayBuffer();
-    audioContent = Buffer.from(arrayBuffer);
-    languageCode = (input as any).languageCode ?? languageCode;
+    languageCode = input.languageCode ?? languageCode;
+    mimeType = input.mimeType;
+  } else if ("audioUrl" in input && typeof input.audioUrl === "string") {
+    audioContent = await fetchAudioUrl(input.audioUrl);
   } else {
-    throw new Error("Invalid transcription input");
+    throw new Error(
+      "Invalid transcription input. Accepted: Buffer, URL string, base64 string, " +
+        "{ audio: Buffer, languageCode?, mimeType? }, or { audioUrl: string }.",
+    );
   }
 
-  logger.log(`[Vertex] Transcribing audio with model ${model}...`);
+  const { encoding, sampleRateHertz } = encodingFromMimeType(mimeType);
 
-  const request = {
+  logger.log(
+    `[Vertex] Transcribing audio with model ${model} (encoding=${AudioEncoding[encoding]})...`,
+  );
+
+  const request: IRecognizeRequest = {
     audio: {
       content: audioContent.toString("base64"),
     },
     config: {
-      encoding: encoding,
-      sampleRateHertz: sampleRateHertz,
-      languageCode: languageCode,
-      model: model,
+      encoding,
+      ...(sampleRateHertz !== undefined ? { sampleRateHertz } : {}),
+      languageCode,
+      model,
       useEnhanced: true,
       enableAutomaticPunctuation: true,
     },
   };
 
-  try {
-    const [response] = await client.recognize(request as any);
-    const transcription = response.results
-      ?.map(result => result.alternatives?.[0]?.transcript)
-      .join("\n");
+  const [response] = await client.recognize(request);
+  const transcription = response.results
+    ?.map((result) => result.alternatives?.[0]?.transcript)
+    .join("\n");
 
-    const confidence = response.results?.[0]?.alternatives?.[0]?.confidence ?? 0;
-    logger.log(`[Vertex] Transcription completed. Confidence: ${confidence}`);
+  const confidence = response.results?.[0]?.alternatives?.[0]?.confidence ?? 0;
+  logger.log(`[Vertex] Transcription completed. Confidence: ${confidence}`);
 
-    return transcription ?? "";
-  } catch (error: any) {
-    logger.error(`[Vertex] Transcription error: ${error.message}`);
-    throw error;
-  }
+  return transcription ?? "";
 }
 
 /**
  * Handles text-to-speech synthesis using Google Cloud Text-to-Speech.
- * 
+ *
  * @param runtime - The agent runtime for accessing settings and providers.
- * @param input - The text input to synthesize (string or TextToSpeechParams).
+ * @param input - The text input to synthesize (string, TextToSpeechParams, or local params).
  * @returns An ArrayBuffer containing the synthesized audio in OGG_OPUS format.
- * @throws Error if the GCP project ID is not set or if synthesis fails.
  */
 export async function handleTextToSpeech(
   runtime: IAgentRuntime,
-  input: TTSInput
+  input: TTSInput,
 ): Promise<ArrayBuffer> {
-  const projectId = getProjectId(runtime);
-  if (!projectId) throw new Error("GOOGLE_VERTEX_PROJECT_ID not set");
+  const region = getRegion(runtime);
+  const apiEndpoint = `${region}-texttospeech.googleapis.com`;
+  const client = getTextToSpeechClient(apiEndpoint);
 
-  const client = new TextToSpeechClient();
   let text = "";
-  let voiceName = getTTSModel(runtime); // Using default neural voice
+  let voiceName = getTTSModel(runtime); // Default neural voice
   let languageCode = "en-US";
 
   if (typeof input === "string") {
     text = input;
   } else if ("text" in input) {
     text = input.text;
-    voiceName = (input as LocalTextToSpeechParams).voiceName ?? voiceName;
-    languageCode = (input as any).languageCode ?? languageCode;
+    if ("voiceName" in input && input.voiceName) {
+      voiceName = input.voiceName;
+    } else if ("voice" in input && input.voice) {
+      voiceName = input.voice;
+    }
+    if ("languageCode" in input && input.languageCode) {
+      languageCode = input.languageCode;
+    }
+  } else {
+    throw new Error(
+      "Invalid TTS input. Accepted: string or { text: string, voice?, voiceName?, languageCode? }.",
+    );
+  }
+  if (text.trim().length === 0) {
+    throw new Error("TTS input text is empty.");
   }
 
-  logger.log(`[Vertex] Synthesizing speech for text: "${text.substring(0, 50)}..."`);
+  logger.log(
+    `[Vertex] Synthesizing speech for text: "${text.substring(0, 50)}..."`,
+  );
 
-  const request = {
+  const request: ISynthesizeSpeechRequest = {
     input: { text },
     voice: { languageCode, name: voiceName },
-    audioConfig: { audioEncoding: "OGG_OPUS" as const },
+    audioConfig: { audioEncoding: TtsAudioEncoding.OGG_OPUS },
   };
 
-  try {
-    const [response] = await client.synthesizeSpeech(request);
-    if (!response.audioContent) {
-      throw new Error("No audio content received from TTS");
-    }
-    
-    // Convert Buffer to ArrayBuffer as expected by Eliza core
-    const buffer = response.audioContent as Buffer;
-    const arrayBuffer = buffer.buffer.slice(
-        buffer.byteOffset,
-        buffer.byteOffset + buffer.byteLength
-    );
-
-    logger.log(`[Vertex] Speech synthesis completed. Audio size: ${buffer.length} bytes`);
-    return arrayBuffer as ArrayBuffer;
-  } catch (error: any) {
-    logger.error(`[Vertex] TTS error: ${error.message}`);
-    throw error;
+  const [response] = await client.synthesizeSpeech(request);
+  if (!response.audioContent) {
+    throw new Error("No audio content received from TTS");
   }
+
+  // Convert Buffer (or Uint8Array/string) to ArrayBuffer for Eliza core.
+  const audio = response.audioContent;
+  let buffer: Buffer;
+  if (Buffer.isBuffer(audio)) {
+    buffer = audio;
+  } else if (typeof audio === "string") {
+    buffer = Buffer.from(audio, "base64");
+  } else {
+    buffer = Buffer.from(audio);
+  }
+  const arrayBuffer = buffer.buffer.slice(
+    buffer.byteOffset,
+    buffer.byteOffset + buffer.byteLength,
+  );
+
+  logger.log(
+    `[Vertex] Speech synthesis completed. Audio size: ${buffer.length} bytes`,
+  );
+  return arrayBuffer as ArrayBuffer;
 }
