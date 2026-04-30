@@ -9,7 +9,12 @@ import {
   TextToSpeechClient,
   protos as ttsProtos,
 } from "@google-cloud/text-to-speech";
-import { getRegion, getTranscriptionModel, getTTSModel } from "../utils/config";
+import {
+  getProjectId,
+  getRegion,
+  getTranscriptionModel,
+  getTTSModel,
+} from "../utils/config";
 
 // Types for local parameters (extra fields not in @elizaos/core's TranscriptionParams).
 // `audio` is intentionally Buffer-only here; callers with Blob/string should pass
@@ -50,20 +55,34 @@ const URL_FETCH_MAX_BYTES = 25 * 1024 * 1024; // 25 MB
 const speechClientCache = new Map<string, SpeechClient>();
 const ttsClientCache = new Map<string, TextToSpeechClient>();
 
-function getSpeechClient(apiEndpoint: string): SpeechClient {
-  let client = speechClientCache.get(apiEndpoint);
+function getSpeechClient(
+  apiEndpoint?: string,
+  projectId?: string,
+): SpeechClient {
+  const key = `${apiEndpoint ?? "default"}:${projectId ?? "default"}`;
+  let client = speechClientCache.get(key);
   if (!client) {
-    client = new SpeechClient({ apiEndpoint });
-    speechClientCache.set(apiEndpoint, client);
+    client = new SpeechClient({
+      ...(apiEndpoint ? { apiEndpoint } : {}),
+      ...(projectId ? { projectId, quotaProject: projectId } : {}),
+    });
+    speechClientCache.set(key, client);
   }
   return client;
 }
 
-function getTextToSpeechClient(apiEndpoint: string): TextToSpeechClient {
-  let client = ttsClientCache.get(apiEndpoint);
+function getTextToSpeechClient(
+  apiEndpoint?: string,
+  projectId?: string,
+): TextToSpeechClient {
+  const key = `${apiEndpoint ?? "default"}:${projectId ?? "default"}`;
+  let client = ttsClientCache.get(key);
   if (!client) {
-    client = new TextToSpeechClient({ apiEndpoint });
-    ttsClientCache.set(apiEndpoint, client);
+    client = new TextToSpeechClient({
+      ...(apiEndpoint ? { apiEndpoint } : {}),
+      ...(projectId ? { projectId, quotaProject: projectId } : {}),
+    });
+    ttsClientCache.set(key, client);
   }
   return client;
 }
@@ -195,8 +214,10 @@ export async function handleTranscription(
   input: TranscriptionInput,
 ): Promise<string> {
   const region = getRegion(runtime);
-  const apiEndpoint = `${region}-speech.googleapis.com`;
-  const client = getSpeechClient(apiEndpoint);
+  const projectId = getProjectId(runtime);
+  const apiEndpoint =
+    !region || region === "global" ? undefined : `${region}-speech.googleapis.com`;
+  const client = getSpeechClient(apiEndpoint, projectId);
 
   let audioContent: Buffer;
   const model = getTranscriptionModel(runtime);
@@ -268,8 +289,12 @@ export async function handleTextToSpeech(
   input: TTSInput,
 ): Promise<ArrayBuffer> {
   const region = getRegion(runtime);
-  const apiEndpoint = `${region}-texttospeech.googleapis.com`;
-  const client = getTextToSpeechClient(apiEndpoint);
+  const projectId = getProjectId(runtime);
+  const apiEndpoint =
+    !region || region === "global"
+      ? undefined
+      : `${region}-texttospeech.googleapis.com`;
+  const client = getTextToSpeechClient(apiEndpoint, projectId);
 
   let text = "";
   let voiceName = getTTSModel(runtime); // Default neural voice
