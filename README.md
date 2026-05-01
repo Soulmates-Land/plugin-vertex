@@ -14,7 +14,8 @@ Use your GCP billing instead of any LLM API keys. Same Claude models, routed thr
 
 ```env
 GOOGLE_VERTEX_PROJECT_ID=your-gcp-project-id
-GOOGLE_VERTEX_REGION=us-east5
+GOOGLE_VERTEX_REGION=global
+GOOGLE_SPEECH_REGION=us-central1
 ```
 
 ## Models

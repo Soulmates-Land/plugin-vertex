@@ -47,19 +47,21 @@ export function getReasoningLargeModel(runtime: IAgentRuntime): string {
   );
 }
 
-// Default to "latest_long": a v1-API-compatible Speech-to-Text model.
-// Note: chirp_2 is only available via the Speech v2 API; SpeechClient.recognize
-// uses the v1 API, so chirp_2 cannot be used here. Override with
-// VERTEX_TRANSCRIPTION_MODEL if a different v1 model is desired (e.g.
-// "default", "latest_short", "phone_call", "video").
+// Default to "chirp": the Universal Speech Model, recommended for voice notes and conversational audio.
+// Note: chirp and chirp_2 are only available via the Speech v2 API.
+// Override with VERTEX_TRANSCRIPTION_MODEL if a different v2 model is desired (e.g. "latest_long").
 export function getTranscriptionModel(runtime: IAgentRuntime): string {
-  return getSetting(runtime, "VERTEX_TRANSCRIPTION_MODEL") ?? "latest_long";
+  return getSetting(runtime, "VERTEX_TRANSCRIPTION_MODEL") ?? "chirp";
 }
 
 export function getTTSModel(runtime: IAgentRuntime): string {
-  return getSetting(runtime, "VERTEX_TTS_MODEL") ?? "en-US-Neural2-F";
+  return getSetting(runtime, "VERTEX_TTS_MODEL") ?? "en-US-Chirp3-HD-Achernar";
 }
 
 export function getRegion(runtime: IAgentRuntime): string {
   return getSetting(runtime, "GOOGLE_VERTEX_REGION") ?? "us-central1";
+}
+
+export function getTranscriptionRegion(runtime: IAgentRuntime): string {
+  return getSetting(runtime, "GOOGLE_SPEECH_REGION") ?? "us-central1";
 }

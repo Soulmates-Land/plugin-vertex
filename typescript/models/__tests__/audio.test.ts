@@ -257,7 +257,7 @@ describe("Vertex Audio Handlers", () => {
       const req = synthesizeMock.mock.calls[0]![0];
       expect(req.input).toEqual({ text: "Hello" });
       expect(req.voice.languageCode).toBe("en-US");
-      expect(req.voice.name).toBe("en-US-Neural2-F");
+      expect(req.voice.name).toBe("en-US-Chirp3-HD-Achernar");
       expect(req.audioConfig.audioEncoding).toBe(3); // OGG_OPUS
     });
 

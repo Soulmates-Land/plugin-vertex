@@ -4,7 +4,7 @@ import type {
   TextToSpeechParams as CoreTextToSpeechParams,
 } from "@elizaos/core";
 import { logger } from "@elizaos/core";
-import { SpeechClient, protos as speechProtos } from "@google-cloud/speech";
+import { v2 as speechV2, protos as speechProtos } from "@google-cloud/speech";
 import {
   TextToSpeechClient,
   protos as ttsProtos,
@@ -13,6 +13,7 @@ import {
   getProjectId,
   getRegion,
   getTranscriptionModel,
+  getTranscriptionRegion,
   getTTSModel,
 } from "../utils/config";
 
@@ -38,11 +39,7 @@ type TranscriptionInput =
   | string;
 type TTSInput = LocalTextToSpeechParams | CoreTextToSpeechParams | string;
 
-type IRecognizeRequest = speechProtos.google.cloud.speech.v1.IRecognizeRequest;
-type AudioEncoding =
-  speechProtos.google.cloud.speech.v1.RecognitionConfig.AudioEncoding;
-const AudioEncoding =
-  speechProtos.google.cloud.speech.v1.RecognitionConfig.AudioEncoding;
+type IRecognizeRequest = speechProtos.google.cloud.speech.v2.IRecognizeRequest;
 type ISynthesizeSpeechRequest =
   ttsProtos.google.cloud.texttospeech.v1.ISynthesizeSpeechRequest;
 const TtsAudioEncoding = ttsProtos.google.cloud.texttospeech.v1.AudioEncoding;
@@ -52,17 +49,17 @@ const URL_FETCH_TIMEOUT_MS = 30_000;
 const URL_FETCH_MAX_BYTES = 25 * 1024 * 1024; // 25 MB
 
 // Module-level client cache, keyed by apiEndpoint (region-specific).
-const speechClientCache = new Map<string, SpeechClient>();
+const speechClientCache = new Map<string, speechV2.SpeechClient>();
 const ttsClientCache = new Map<string, TextToSpeechClient>();
 
 function getSpeechClient(
   apiEndpoint?: string,
   projectId?: string,
-): SpeechClient {
+): speechV2.SpeechClient {
   const key = `${apiEndpoint ?? "default"}:${projectId ?? "default"}`;
   let client = speechClientCache.get(key);
   if (!client) {
-    client = new SpeechClient({
+    client = new speechV2.SpeechClient({
       ...(apiEndpoint ? { apiEndpoint } : {}),
       ...(projectId ? { projectId, quotaProject: projectId } : {}),
     });
@@ -87,49 +84,7 @@ function getTextToSpeechClient(
   return client;
 }
 
-interface EncodingChoice {
-  encoding: AudioEncoding;
-  sampleRateHertz?: number;
-}
 
-/**
- * Maps a MIME type to a Google Cloud Speech AudioEncoding.
- * Throws on unsupported types so we never silently mis-decode audio.
- */
-function encodingFromMimeType(mimeType: string | undefined): EncodingChoice {
-  // Default: OGG_OPUS at 16 kHz (WhatsApp voice notes).
-  if (!mimeType) {
-    return { encoding: AudioEncoding.OGG_OPUS, sampleRateHertz: 16000 };
-  }
-  const m = mimeType.toLowerCase().split(";")[0]!.trim();
-  switch (m) {
-    case "audio/ogg":
-    case "audio/opus":
-    case "audio/ogg-opus":
-      return { encoding: AudioEncoding.OGG_OPUS, sampleRateHertz: 16000 };
-    case "audio/webm":
-      return { encoding: AudioEncoding.WEBM_OPUS, sampleRateHertz: 48000 };
-    case "audio/wav":
-    case "audio/wave":
-    case "audio/x-wav":
-      // LINEAR16 sample rate is read from the WAV header by the API.
-      return { encoding: AudioEncoding.LINEAR16 };
-    case "audio/flac":
-    case "audio/x-flac":
-      return { encoding: AudioEncoding.FLAC };
-    case "audio/mp3":
-    case "audio/mpeg":
-      return { encoding: AudioEncoding.MP3 };
-    case "audio/amr":
-      return { encoding: AudioEncoding.AMR, sampleRateHertz: 8000 };
-    case "audio/amr-wb":
-      return { encoding: AudioEncoding.AMR_WB, sampleRateHertz: 16000 };
-    default:
-      throw new Error(
-        `Unsupported audio mimeType "${mimeType}". Supported: audio/ogg, audio/webm, audio/wav, audio/flac, audio/mp3, audio/amr, audio/amr-wb.`,
-      );
-  }
-}
 
 /**
  * Fetches an audio URL with a hard timeout, response.ok check, and a size cap.
@@ -213,7 +168,7 @@ export async function handleTranscription(
   runtime: IAgentRuntime,
   input: TranscriptionInput,
 ): Promise<string> {
-  const region = getRegion(runtime);
+  const region = getTranscriptionRegion(runtime);
   const projectId = getProjectId(runtime);
   const apiEndpoint =
     !region || region === "global" ? undefined : `${region}-speech.googleapis.com`;
@@ -222,7 +177,6 @@ export async function handleTranscription(
   let audioContent: Buffer;
   const model = getTranscriptionModel(runtime);
   let languageCode = "en-US";
-  let mimeType: string | undefined;
 
   if (Buffer.isBuffer(input)) {
     audioContent = input;
@@ -236,7 +190,6 @@ export async function handleTranscription(
   } else if ("audio" in input && Buffer.isBuffer(input.audio)) {
     audioContent = input.audio;
     languageCode = input.languageCode ?? languageCode;
-    mimeType = input.mimeType;
   } else if ("audioUrl" in input && typeof input.audioUrl === "string") {
     audioContent = await fetchAudioUrl(input.audioUrl);
   } else {
@@ -246,24 +199,28 @@ export async function handleTranscription(
     );
   }
 
-  const { encoding, sampleRateHertz } = encodingFromMimeType(mimeType);
+  let actualProjectId = projectId;
+  if (!actualProjectId) {
+    actualProjectId = await client.getProjectId();
+  }
+  const location = region && region !== "global" ? region : "global";
+  const recognizer = `projects/${actualProjectId}/locations/${location}/recognizers/_`;
 
   logger.log(
-    `[Vertex] Transcribing audio with model ${model} (encoding=${AudioEncoding[encoding]})...`,
+    `[Vertex] Transcribing audio with model ${model} (V2 API, auto-decoding)...`,
   );
 
   const request: IRecognizeRequest = {
-    audio: {
-      content: audioContent.toString("base64"),
-    },
+    recognizer,
     config: {
-      encoding,
-      ...(sampleRateHertz !== undefined ? { sampleRateHertz } : {}),
-      languageCode,
+      autoDecodingConfig: {},
+      languageCodes: [languageCode],
       model,
-      useEnhanced: true,
-      enableAutomaticPunctuation: true,
+      features: {
+        enableAutomaticPunctuation: true,
+      },
     },
+    content: audioContent.toString("base64"),
   };
 
   const [response] = await client.recognize(request);

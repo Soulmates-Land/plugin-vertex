@@ -42,7 +42,12 @@
       },
       "GOOGLE_VERTEX_REGION": {
         "type": "string",
-        "description": "Vertex AI region (e.g. us-east5 for Claude, us-central1 for Gemini). Defaults are provider-aware if unset.",
+        "description": "Vertex AI region (e.g. us-east5 for Claude, global for Gemini). Defaults to us-central1.",
+        "required": false
+      },
+      "GOOGLE_SPEECH_REGION": {
+        "type": "string",
+        "description": "Vertex AI Speech-to-Text region (e.g. us-central1 for chirp). Defaults to us-central1.",
         "required": false
       },
       "VERTEX_SMALL_MODEL": {
