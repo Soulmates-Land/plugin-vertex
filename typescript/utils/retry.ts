@@ -1,7 +1,9 @@
 import { logger } from "@elizaos/core";
 
-const MAX_RETRIES = 3;
+const MAX_RETRIES = 4;
 const BASE_DELAY_MS = 1000;
+/** Cap on exponential backoff to keep worst-case wait UX-acceptable. */
+const MAX_DELAY_MS = 10_000;
 
 function isRetryable(error: unknown): boolean {
   if (error instanceof Error) {
@@ -25,7 +27,7 @@ export async function executeWithRetry<T>(
     } catch (error) {
       lastError = error;
       if (attempt < MAX_RETRIES && isRetryable(error)) {
-        const delay = BASE_DELAY_MS * 2 ** attempt;
+        const delay = Math.min(BASE_DELAY_MS * 2 ** attempt, MAX_DELAY_MS);
         logger.warn(
           `[Vertex] ${operation} failed (attempt ${attempt + 1}/${MAX_RETRIES + 1}), retrying in ${delay}ms`,
         );
